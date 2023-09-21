@@ -4,9 +4,6 @@ const {initializeApp} = require("firebase-admin/app");
 const {logger} = require("firebase-functions");
 const admin = require('firebase-admin');
 
-// const serviceAccount = require('./key.json');
-// initializeApp({ credential: admin.credential.cert(serviceAccount) });
-
 initializeApp();
 
 exports.summary = onRequest(async (req, res) => {
@@ -14,41 +11,39 @@ exports.summary = onRequest(async (req, res) => {
         const startTimeStr = req.query.startTime;
         const endTimeStr = req.query.endTime;
 
+        if (!startTimeStr || !endTimeStr) {
+            res.status(400).send("Invalid parameters");
+        }
+
         const startTime = admin.firestore.Timestamp.fromDate(new Date(startTimeStr.toString()));
         const endTime = admin.firestore.Timestamp.fromDate(new Date(endTimeStr.toString()));
 
         const querySnapshot = await getFirestore()
-            .collection("gh-gmc").doc('test').collection('haul-cycle-summary').where("DumpingEndTime", '<', endTime).where('DumpingEndTime', '>', startTime).get();
-
-        const filteredData = [];
-        querySnapshot.forEach((doc) => {
-            filteredData.push(doc.data());
-        });
+            .collection("gh-gmc")
+            .doc('test')
+            .collection('haul-cycle-summary')
+            .where("DumpingEndTime", '<', endTime)
+            .where('DumpingEndTime', '>', startTime)
+            .get();
 
         const combinationMap = new Map();
 
-        filteredData.forEach((doc) => {
-            const loaderName = doc["LoaderName"];
-            const dumpName = doc["DumpName"];
-            const netWeight = doc["NetWeight_tonne"];
+        querySnapshot.forEach((doc) => {
+            const loaderName = doc.data()["LoaderName"];
+            const dumpName = doc.data()["DumpName"];
+            const netWeight = doc.data()["NetWeight_tonne"];
 
-            // Create a unique key for each combination
             const key = `${loaderName}_${dumpName}`;
-
-            if (combinationMap.has(key)) {
-                combinationMap.set(key, combinationMap.get(key) + netWeight);
-            } else {
-                combinationMap.set(key, netWeight);
-            }
+            const currentValue = combinationMap.get(key) || 0;
+            combinationMap.set(key, currentValue + netWeight);
         });
 
-        const uniqueCombinations = [];
-        combinationMap.forEach((netWeight, key) => {
+        const uniqueCombinations = Array.from(combinationMap, ([key, netWeight]) => {
             const [loaderName, dumpName] = key.split('_');
-            uniqueCombinations.push({ loaderName, dumpName, netWeight });
+            return { loaderName, dumpName, netWeight };
         });
 
-        res.json(uniqueCombinations)
+        res.send(uniqueCombinations)
     } catch (error) {
         logger.error(error.message);
         res.status(500).send(`Error fetching summary: ${error.message}`);

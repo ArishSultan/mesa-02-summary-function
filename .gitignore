@@ -2,3 +2,5 @@
 functions/node_modules/
 
 functions/*lock.json
+config.bat
+node_modules
